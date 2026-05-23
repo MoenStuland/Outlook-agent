@@ -1,0 +1,57 @@
+name: Oslo Bors Agent
+on:
+  schedule:
+    - cron: 15 7 * * 1-5
+    - cron: 0 10 * * 1-5
+    - cron: 30 13 * * 1-5
+  workflow_dispatch:
+    inputs:
+      jobb:
+        description: 0915, 1200 eller 1530
+        required: true
+        default: "0915"
+permissions:
+  contents: write
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install yfinance pandas
+      - name: Bestem jobb
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "JOBB=${{ github.event.inputs.jobb }}" >> $GITHUB_ENV
+          else
+            HOUR=$(date -u +%H)
+            if [ "$HOUR" = "07" ]; then echo "JOBB=0915" >> $GITHUB_ENV
+            elif [ "$HOUR" = "10" ]; then echo "JOBB=1200" >> $GITHUB_ENV
+            else echo "JOBB=1530" >> $GITHUB_ENV
+            fi
+          fi
+      - name: Kjor agent
+        run: python agent.py $JOBB
+        env:
+          EPOST_AVSENDER: ${{ secrets.EPOST_AVSENDER }}
+          EPOST_PASSORD: ${{ secrets.EPOST_PASSORD }}
+          EPOST_MOTTAKER: ${{ secrets.EPOST_MOTTAKER }}
+      - name: Lagre filer til repo
+        run: |
+          git config user.name "Oslo Bors bot"
+          git config user.email "obagent@users.noreply.github.com"
+          if [ "$JOBB" = "0915" ]; then
+            git add -f snapshot_0915.json
+            git commit --allow-empty -m "Snapshot 0915"
+            git pull --rebase
+            git push
+          elif [ "$JOBB" = "1200" ]; then
+            git add -f snapshot_1200.json topp10_fall.json
+            git commit --allow-empty -m "Snapshot 1200 og topp10"
+            git pull --rebase
+            git push
+          fi
